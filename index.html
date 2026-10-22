@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Ajuste de fotos cuadradas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: una columna de trabajo. Arriba reglas y ajustes, en el medio la zona de carga, abajo el resultado por foto. */
+:root{
+  --bg:#f2f4f8; --surface:#ffffff; --fg:#17202e; --muted:#586376; --line:#dbe0e9;
+  --accent:#1f4fd8; --accent-fg:#ffffff; --accent-soft:#e6edff;
+  --ok:#15733a; --ok-bg:#e1f3e7; --warn:#8f5200; --warn-bg:#fcefd2; --bad:#a8221a; --bad-bg:#fbe3e0;
+  --checker-a:#e9edf3; --checker-b:#f7f9fc;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e131b; --surface:#161d28; --fg:#e8edf5; --muted:#98a3b6; --line:#283140;
+  --accent:#86a8ff; --accent-fg:#0b1222; --accent-soft:#1b2745;
+  --ok:#6fd18f; --ok-bg:#14301f; --warn:#f0b85a; --warn-bg:#35280f; --bad:#ff9d95; --bad-bg:#3a1917;
+  --checker-a:#1c2431; --checker-b:#232d3d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e131b; --surface:#161d28; --fg:#e8edf5; --muted:#98a3b6; --line:#283140;
+  --accent:#86a8ff; --accent-fg:#0b1222; --accent-soft:#1b2745;
+  --ok:#6fd18f; --ok-bg:#14301f; --warn:#f0b85a; --warn-bg:#35280f; --bad:#ff9d95; --bad-bg:#3a1917;
+  --checker-a:#1c2431; --checker-b:#232d3d; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:400 15px/1.5 var(--sans);margin:0;
+  padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:980px;margin:0 auto;display:grid;gap:18px}
+h1{font:600 24px/1.25 var(--sans);margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:62ch}
+.rules{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0;padding:0;list-style:none}
+.rules li{font:500 12.5px var(--mono);background:var(--accent-soft);color:var(--accent);padding:4px 9px;border-radius:5px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px 18px}
+.field{display:grid;gap:5px;min-width:0}
+.field>label,.field>.lab{font:500 12px var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+input[type=number],select{font:400 15px var(--mono);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
+input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-radius:7px;background:var(--bg);padding:3px}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--fg)}
+.check input{width:16px;height:16px;accent-color:var(--accent)}
+.hint{font-size:12.5px;color:var(--muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:500 14px var(--sans);border-radius:7px;padding:9px 14px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.drop{display:grid;gap:14px;justify-items:center;text-align:center;padding:30px 16px;border:2px dashed var(--line);border-radius:12px;background:var(--surface);transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop svg{max-width:100%;height:auto}
+.drop strong{font-size:17px;font-weight:600}
+.drop .row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between}
+.summary{font:500 13px var(--mono);color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.list{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.item{display:grid;grid-template-columns:84px minmax(0,1fr) auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.thumb{width:84px;height:84px;border-radius:6px;overflow:hidden;background:repeating-conic-gradient(var(--checker-a) 0 25%,var(--checker-b) 0 50%) 0 0/14px 14px;border:1px solid var(--line)}
+.thumb img{width:100%;height:100%;object-fit:contain;display:block}
+.name{font-weight:500;overflow-wrap:anywhere}
+.meta{display:grid;gap:2px;margin-top:3px;font:400 12.5px/1.45 var(--mono);color:var(--muted)}
+.meta b{color:var(--fg);font-weight:500}
+.chip{display:inline-block;font:500 11.5px var(--sans);letter-spacing:.03em;padding:2px 8px;border-radius:99px;margin-right:6px}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}.chip.warn{background:var(--warn-bg);color:var(--warn)}.chip.bad{background:var(--bad-bg);color:var(--bad)}.chip.busy{background:var(--accent-soft);color:var(--accent)}
+.notes{font-size:12.5px;color:var(--warn);margin-top:4px}
+.item.error .notes{color:var(--bad)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px);z-index:20}
+@media (max-width:560px){
+  .item{grid-template-columns:64px minmax(0,1fr)}
+  .thumb{width:64px;height:64px}
+  .item .dl{grid-column:1/-1}
+  .item .dl button{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Ajuste de fotos cuadradas</h1>
+    <p class="sub">Arrastrá las fotos del producto (WebP, JPG o PNG) y salen cuadradas, en JPG o PNG y por debajo del peso máximo. Todo se procesa en tu navegador: las fotos no se suben a ningún lado.</p>
+    <ul class="rules" aria-label="Reglas de la plataforma">
+      <li>Cuadrada</li><li>1000 a 3000 px por lado</li><li>JPG o PNG</li><li>Hasta 400 KB</li>
+    </ul>
+  </header>
+
+  <section class="panel" aria-label="Ajustes">
+    <div class="settings">
+      <div class="field">
+        <label for="size">Lado de la imagen (px)</label>
+        <input id="size" type="number" min="1000" max="3000" step="50" value="1500" disabled>
+        <label class="check"><input id="autoSize" type="checkbox" checked> Usar el lado mayor de cada foto</label>
+        <span class="hint">Así no se agranda de más. Siempre queda entre 1000 y 3000 px.</span>
+      </div>
+      <div class="field">
+        <label for="bg">Color de fondo</label>
+        <input id="bg" type="color" value="#ffffff">
+        <span class="hint">Rellena los costados y las zonas transparentes.</span>
+      </div>
+      <div class="field">
+        <label for="margin">Margen alrededor (%)</label>
+        <input id="margin" type="number" min="0" max="20" step="1" value="0">
+        <span class="hint">0 = el producto toca el borde.</span>
+      </div>
+      <div class="field">
+        <label for="format">Formato de salida</label>
+        <select id="format"><option value="jpg" selected>JPG (recomendado)</option><option value="png">PNG</option></select>
+        <span class="hint">El PNG pesa más: puede achicar la foto para entrar en 400 KB.</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="dropzone" class="drop" aria-label="Cargar fotos">
+    <svg width="320" height="96" viewBox="0 0 320 96" role="img" aria-label="Una foto apaisada de 4 a 3 pasa a cuadrada con bandas de relleno arriba y abajo">
+      <rect x="8" y="18" width="96" height="60" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-width="2"/>
+      <path d="M22 68l20-24 14 14 10-10 26 20z" fill="currentColor" fill-opacity=".25"/>
+      <text x="56" y="92" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" fill="currentColor" fill-opacity=".7">original 4:3</text>
+      <path d="M130 48h60m-10-8l10 8-10 8" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="228" y="4" width="80" height="80" rx="3" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+      <rect x="228" y="24" width="80" height="40" fill="currentColor" fill-opacity=".14"/>
+      <path d="M240 56l16-19 11 10 8-7 19 16z" fill="currentColor" fill-opacity=".28"/>
+      <text x="268" y="94" font-family="IBM Plex Mono,monospace" font-size="10" text-anchor="middle" fill="currentColor" fill-opacity=".7">cuadrada 1:1</text>
+    </svg>
+    <strong>Soltá las fotos acá</strong>
+    <span class="hint">La foto no se recorta: se agranda o achica para entrar completa y se rellena el resto.</span>
+    <div class="row">
+      <button class="primary" id="pick" type="button">Elegir fotos</button>
+      <button id="sample" type="button">Probar con una foto de ejemplo</button>
+    </div>
+    <input id="files" type="file" accept="image/*" multiple hidden>
+  </section>
+
+  <section id="results" hidden aria-live="polite">
+    <div class="bar">
+      <div class="summary" id="summary"></div>
+      <div class="actions">
+        <button class="primary" id="zip" type="button" disabled>Descargar todo (.zip)</button>
+        <button id="clear" type="button">Limpiar</button>
+      </div>
+    </div>
+    <ul class="list" id="list" style="margin-top:12px"></ul>
+  </section>
+</main>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(function(){
+'use strict';
+var MIN_PX=1000, MAX_PX=3000;
+var LIMIT_BYTES=390000;           // margen bajo 400 KB, sea KB = 1000 o 1024 bytes
+var items=[];                      // {id, file, sample, out:{blob,url,w,h,q,scale}, status, notes[], busy, err}
+var runId=0, nextId=1, downloadsCap=null, debounceT=null;
+
+function $(id){return document.getElementById(id);}
+function clamp(v,a,b){return Math.min(b,Math.max(a,v));}
+function kb(n){return (n/1000).toFixed(n<100000?1:0).replace('.',',')+' KB';}
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function toast(msg){var t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(function(){t.hidden=true;},3200);}
+
+try{ if(window.claude&&window.claude.use){ window.claude.use('downloads').then(function(d){downloadsCap=d;},function(){}); } }catch(e){}
+
+function readOpts(){
+  var size=parseInt($('size').value,10); if(!isFinite(size)) size=1500;
+  var margin=parseFloat($('margin').value); if(!isFinite(margin)) margin=0;
+  return {size:clamp(size,MIN_PX,MAX_PX), auto:$('autoSize').checked, bg:$('bg').value||'#ffffff',
+          margin:clamp(margin,0,20)/100, format:$('format').value};
+}
+
+function toBlob(canvas,type,q){
+  return new Promise(function(res,rej){canvas.toBlob(function(b){b?res(b):rej(new Error('El navegador no pudo generar la imagen.'));},type,q);});
+}
+function draw(bmp,S,o){
+  var c=document.createElement('canvas'); c.width=S; c.height=S;
+  var g=c.getContext('2d');
+  g.fillStyle=o.bg; g.fillRect(0,0,S,S);
+  g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+  var box=S*(1-2*o.margin), sc=box/Math.max(bmp.width,bmp.height);
+  var dw=bmp.width*sc, dh=bmp.height*sc;
+  g.drawImage(bmp,(S-dw)/2,(S-dh)/2,dw,dh);
+  return {canvas:c,scale:sc};
+}
+
+/* Devuelve la imagen más grande y de mayor calidad que cumpla con el peso máximo. */
+async function convert(bmp,o){
+  var S=o.auto?clamp(Math.max(bmp.width,bmp.height),MIN_PX,MAX_PX):o.size;
+  var notes=[], shrunk=false;
+  for(;;){
+    var d=draw(bmp,S,o), blob=null, q=null;
+    if(o.format==='png'){
+      blob=await toBlob(d.canvas,'image/png');
+      if(blob.size>LIMIT_BYTES) blob=null;
+    }else{
+      var best=await toBlob(d.canvas,'image/jpeg',0.95);
+      if(best.size<=LIMIT_BYTES){blob=best;q=0.95;}
+      else{
+        var lo=0.4,hi=0.95;
+        var low=await toBlob(d.canvas,'image/jpeg',lo);
+        if(low.size<=LIMIT_BYTES){
+          blob=low;q=lo;
+          for(var i=0;i<6;i++){
+            var mid=(lo+hi)/2, b=await toBlob(d.canvas,'image/jpeg',mid);
+            if(b.size<=LIMIT_BYTES){blob=b;q=mid;lo=mid;}else{hi=mid;}
+          }
+        }
+      }
+    }
+    if(blob){
+      if(shrunk) notes.push('Se redujo a '+S+' px para entrar en 400 KB.');
+      if(d.scale>1.2) notes.push('La foto original es más chica: se amplió ×'+d.scale.toFixed(2).replace('.',',')+' y puede verse menos nítida.');
+      return {blob:blob,w:S,h:S,q:q,scale:d.scale,notes:notes,ok:true};
+    }
+    if(S<=MIN_PX){
+      var fb=await toBlob(d.canvas,o.format==='png'?'image/png':'image/jpeg',0.4);
+      return {blob:fb,w:S,h:S,q:o.format==='png'?null:0.4,scale:d.scale,
+        notes:['Pesa '+kb(fb.size)+' aun en 1000 px: no entra en 400 KB. Probá con JPG o con más margen.'],ok:false};
+    }
+    S=Math.max(MIN_PX,Math.floor(S*0.92)); shrunk=true;
+  }
+}
+
+async function decode(file){
+  if(window.createImageBitmap){ try{ return await createImageBitmap(file); }catch(e){} }
+  return await new Promise(function(res,rej){
+    var u=URL.createObjectURL(file), im=new Image();
+    im.onload=function(){res(im);}; im.onerror=function(){rej(new Error('No se pudo leer la imagen.'));}; im.src=u;
+  });
+}
+
+async function processAll(){
+  var my=++runId, o=readOpts();
+  items.forEach(function(it){it.busy=true;});
+  render();
+  for(var k=0;k<items.length;k++){
+    var it=items[k];
+    try{
+      var bmp=await decode(it.file);
+      if(my!==runId) return;
+      it.src={w:bmp.width||bmp.naturalWidth,h:bmp.height||bmp.naturalHeight,bytes:it.file.size};
+      var r=await convert(bmp,o);
+      if(my!==runId) return;
+      if(it.out&&it.out.url) URL.revokeObjectURL(it.out.url);
+      r.url=URL.createObjectURL(r.blob); r.ext=o.format==='png'?'png':'jpg';
+      it.out=r; it.err=null;
+    }catch(e){ it.err=(e&&e.message)||'No se pudo procesar la imagen.'; it.out=null; }
+    it.busy=false;
+    render();
+  }
+}
+function schedule(){ if(!items.length) return; clearTimeout(debounceT); debounceT=setTimeout(processAll,250); }
+
+function addFiles(list){
+  var arr=Array.prototype.slice.call(list).filter(function(f){return /^image\//.test(f.type)||/\.(webp|jpe?g|png|avif|gif|bmp)$/i.test(f.name);});
+  if(!arr.length){toast('No encontré imágenes en lo que soltaste.');return;}
+  arr.forEach(function(f){items.push({id:nextId++,file:f,busy:true});});
+  processAll();
+}
+
+function outName(it){
+  var base=it.file.name.replace(/\.[^.]+$/,'')||'foto';
+  return base+'.'+(it.out?it.out.ext:'jpg');
+}
+function uniqueNames(){
+  var seen={}, res={};
+  items.forEach(function(it){
+    if(!it.out) return;
+    var n=outName(it), key=n.toLowerCase(), c=seen[key]||0;
+    seen[key]=c+1;
+    if(c){ var p=n.lastIndexOf('.'); n=n.slice(0,p)+'-'+(c+1)+n.slice(p); }
+    res[it.id]=n;
+  });
+  return res;
+}
+
+function render(){
+  $('results').hidden=!items.length;
+  $('dropzone').hidden=false;
+  var names=uniqueNames(), ok=0, warn=0, bad=0, busy=0;
+  var ul=$('list'); ul.innerHTML='';
+  items.forEach(function(it){
+    var li=document.createElement('li'); li.className='item'+(it.err?' error':'');
+    var chip='', notes=[], meta='';
+    if(it.busy){ chip='<span class="chip busy">Procesando</span>'; busy++; }
+    else if(it.err){ chip='<span class="chip bad">Error</span>'; bad++; notes=[it.err]; }
+    else if(it.out){
+      if(it.out.ok&&!it.out.notes.length){chip='<span class="chip ok">Cumple</span>';ok++;}
+      else if(it.out.ok){chip='<span class="chip warn">Cumple, con aviso</span>';ok++;warn++;}
+      else{chip='<span class="chip bad">No cumple</span>';bad++;}
+      notes=it.out.notes;
+    }
+    if(it.src) meta+='<span>Antes: <b>'+it.src.w+'×'+it.src.h+' px</b> · '+kb(it.src.bytes)+'</span>';
+    if(it.out) meta+='<span>Después: <b>'+it.out.w+'×'+it.out.h+' px</b> · <b>'+kb(it.out.blob.size)+'</b>'+(it.out.q?' · calidad '+Math.round(it.out.q*100):'')+'</span>';
+    li.innerHTML='<div class="thumb">'+(it.out?'<img alt="" src="'+it.out.url+'">':'')+'</div>'+
+      '<div><div class="name">'+chip+esc(it.out?names[it.id]:it.file.name)+'</div><div class="meta">'+meta+'</div>'+
+      notes.map(function(n){return '<div class="notes">'+esc(n)+'</div>';}).join('')+'</div>'+
+      '<div class="dl"><button type="button" data-id="'+it.id+'"'+(it.out?'':' disabled')+'>Descargar</button></div>';
+    ul.appendChild(li);
+  });
+  var total=items.length;
+  $('summary').textContent=total+(total===1?' foto':' fotos')+' · '+ok+' listas'+(warn?' ('+warn+' con aviso)':'')+(bad?' · '+bad+' con problema':'')+(busy?' · procesando…':'');
+  $('zip').disabled=busy>0||!items.some(function(i){return i.out;});
+}
+
+/* ---------- Descarga ---------- */
+async function saveFile(name,blob){
+  if(downloadsCap){
+    try{ await downloadsCap.save({filename:name,data:blob}); toast('Listo: '+name); }
+    catch(e){ if(e&&e.code==='declined') return; toast('No se pudo guardar el archivo.'); }
+    return;
+  }
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+}
+
+var CRC=(function(){var t=new Uint32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(u8){var c=0xFFFFFFFF;for(var i=0;i<u8.length;i++)c=CRC[(c^u8[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+/* ZIP sin compresión (las imágenes ya vienen comprimidas). */
+async function makeZip(files){
+  var enc=new TextEncoder(), parts=[], central=[], offset=0, now=new Date();
+  var dt=(now.getHours()<<11)|(now.getMinutes()<<5)|(now.getSeconds()>>1);
+  var dd=((now.getFullYear()-1980)<<9)|((now.getMonth()+1)<<5)|now.getDate();
+  for(var i=0;i<files.length;i++){
+    var data=new Uint8Array(await files[i].blob.arrayBuffer()), name=enc.encode(files[i].name), crc=crc32(data), len=data.length;
+    var lh=new DataView(new ArrayBuffer(30));
+    lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(8,0,true);
+    lh.setUint16(10,dt,true);lh.setUint16(12,dd,true);lh.setUint32(14,crc,true);lh.setUint32(18,len,true);lh.setUint32(22,len,true);
+    lh.setUint16(26,name.length,true);lh.setUint16(28,0,true);
+    parts.push(lh.buffer,name,data);
+    var ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(10,0,true);
+    ch.setUint16(12,dt,true);ch.setUint16(14,dd,true);ch.setUint32(16,crc,true);ch.setUint32(20,len,true);ch.setUint32(24,len,true);
+    ch.setUint16(28,name.length,true);ch.setUint32(42,offset,true);
+    central.push(ch.buffer,name);
+    offset+=30+name.length+len;
+  }
+  var cdSize=0; central.forEach(function(p){cdSize+=p.byteLength;});
+  var end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);
+  end.setUint32(12,cdSize,true);end.setUint32(16,offset,true);
+  return new Blob(parts.concat(central,[end.buffer]),{type:'application/zip'});
+}
+window.__makeZipForTest=makeZip;
+
+/* ---------- Eventos ---------- */
+$('pick').addEventListener('click',function(){$('files').click();});
+$('files').addEventListener('change',function(e){addFiles(e.target.files);e.target.value='';});
+var dz=$('dropzone');
+['dragenter','dragover'].forEach(function(t){dz.addEventListener(t,function(e){e.preventDefault();dz.classList.add('over');});});
+['dragleave','drop'].forEach(function(t){dz.addEventListener(t,function(e){e.preventDefault();dz.classList.remove('over');});});
+dz.addEventListener('drop',function(e){if(e.dataTransfer&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files);});
+document.addEventListener('dragover',function(e){e.preventDefault();});
+document.addEventListener('drop',function(e){if(!dz.contains(e.target)){e.preventDefault(); if(e.dataTransfer&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files);}});
+document.addEventListener('paste',function(e){var f=e.clipboardData&&e.clipboardData.files; if(f&&f.length) addFiles(f);});
+
+['size','autoSize','bg','margin','format'].forEach(function(id){$(id).addEventListener('input',schedule);$(id).addEventListener('change',schedule);});
+$('autoSize').addEventListener('change',function(){$('size').disabled=this.checked;});
+
+$('list').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-id]'); if(!b) return;
+  var it=items.filter(function(x){return String(x.id)===b.getAttribute('data-id');})[0];
+  if(it&&it.out) saveFile(uniqueNames()[it.id],it.out.blob);
+});
+$('zip').addEventListener('click',async function(){
+  var names=uniqueNames(), files=items.filter(function(i){return i.out;}).map(function(i){return {name:names[i.id],blob:i.out.blob};});
+  if(!files.length) return;
+  if(files.length===1){ saveFile(files[0].name,files[0].blob); return; }
+  var z=await makeZip(files); saveFile('fotos-ajustadas.zip',z);
+});
+$('clear').addEventListener('click',function(){
+  runId++; items.forEach(function(it){if(it.out&&it.out.url)URL.revokeObjectURL(it.out.url);}); items=[]; render();
+});
+
+/* Foto de ejemplo: una imagen 4:3 generada en el momento, para ver el resultado sin cargar nada. */
+$('sample').addEventListener('click',function(){
+  var c=document.createElement('canvas'); c.width=800; c.height=600; var g=c.getContext('2d');
+  var gr=g.createLinearGradient(0,0,800,600); gr.addColorStop(0,'#274690'); gr.addColorStop(1,'#6fa8dc');
+  g.fillStyle=gr; g.fillRect(0,0,800,600);
+  g.fillStyle='rgba(255,255,255,.9)'; g.beginPath(); g.arc(400,300,170,0,Math.PI*2); g.fill();
+  g.fillStyle='#274690'; g.font='600 54px sans-serif'; g.textAlign='center'; g.fillText('EJEMPLO',400,318);
+  g.font='400 26px sans-serif'; g.fillText('800 × 600 px',400,356);
+  c.toBlob(function(b){ var f=new File([b],'ejemplo-800x600.png',{type:'image/png'}); addFiles([f]); },'image/png');
+});
+
+window.__ajuste={get items(){return items;},processAll:processAll,readOpts:readOpts};
+render();
+})();
+</script>
+
+</body>
+</html>
